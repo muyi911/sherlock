@@ -1,4 +1,4 @@
-package main
+package sherlock
 
 import (
 	"io"
@@ -10,6 +10,9 @@ const (
 	WARN  = Level(3)
 	ERROR = Level(4)
 	FATAL = Level(5)
+
+	MinLevel = DEBUG
+	MaxLevel = FATAL
 )
 
 type Logger interface {

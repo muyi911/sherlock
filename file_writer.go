@@ -1,4 +1,4 @@
-package main
+package sherlock
 
 import (
 	"bufio"
@@ -13,9 +13,10 @@ import (
 
 type FileWriter struct {
 	*bufio.Writer
+	mu            sync.Mutex
 	file          *os.File
-	level         Level
 	bytesCounter  uint64 // The number of bytes written to this file
+	level         Level
 	maxSize       uint64 // byte
 	maxFile       uint64
 	logDir        string
@@ -23,44 +24,44 @@ type FileWriter struct {
 	bufferSize    int   // byte
 	flushInterval int   // second
 	cutInterval   int64 // second
-	mu            sync.Mutex
 }
 
-func NewFileWriter(logDir string, logName string, bufferSize, flushInterval int, cutInterval int64, maxSize uint64, maxFile uint64) *FileWriter {
+//logDir string, logName string, bufferSize, flushInterval int, cutInterval int64, maxSize uint64, maxFile uint64
+
+func NewFileWriter(setting *FileWriterSetting) *FileWriter {
 	fw := &FileWriter{
-		maxSize:       maxSize,
-		maxFile:       maxFile,
-		logDir:        logDir,
-		logName:       logName,
-		bufferSize:    bufferSize,
-		flushInterval: flushInterval,
-		cutInterval:   cutInterval,
 		mu:            sync.Mutex{},
+		level:         setting.Level,
+		maxSize:       setting.MaxSize,
+		maxFile:       setting.MaxFile,
+		logDir:        setting.LogDir,
+		logName:       setting.LogName,
+		bufferSize:    setting.BufferSize,
+		flushInterval: setting.FlushInterval,
+		cutInterval:   setting.CutInterval,
 	}
-	if len(logDir) == 0 {
+	if len(fw.logDir) == 0 {
 		fw.logDir = "./" // 默认当前目录
 	}
-	if len(logName) == 0 {
+	if len(fw.logName) == 0 {
 		fw.logName = program // 默认程序名
 	}
-	if maxSize == 0 {
-		fw.maxSize = 1024 * 1024 * 1800 // 默认1800MB
-	}
-	if flushInterval == 0 {
+	//if fw.maxSize == 0 {
+	//	fw.maxSize = 1024 * 1024 * 1800 // 默认1800MB
+	//}
+	if fw.flushInterval == 0 {
 		fw.flushInterval = 3 // 默认3秒
 	}
-	if cutInterval == 0 {
+	if fw.cutInterval == 0 {
 		fw.cutInterval = 86400 // 默认24小时 (24 * 60 * 60s)
 	}
-	if bufferSize == 0 {
+	if fw.bufferSize == 0 {
 		fw.bufferSize = 4096 // 默认4KB
 	}
-	if len(logName) == 0 {
+	if len(fw.logName) == 0 {
 		fw.logName = program
 	}
 
-	go fw.flushLoop()
-	go fw.cutFile()
 	return fw
 }
 
@@ -70,7 +71,11 @@ func (fw *FileWriter) Init() (err error) {
 	err = fw.rotateFile(0, true)
 	if err != nil {
 		fmt.Println("rotateFile error:", err)
+		return
 	}
+
+	go fw.flushLoop()
+	go fw.cutFile()
 	return
 }
 
@@ -216,6 +221,10 @@ func (fw *FileWriter) getCutLogName(t time.Time) string {
 }
 
 func (fw *FileWriter) deleteOldFile() {
+	if fw.maxFile <= 0 {
+		return
+	}
+
 	files, _ := os.ReadDir(fw.logDir)
 	ts := time.Now().Unix() - fw.cutInterval*int64(fw.maxFile)
 	for _, file := range files {

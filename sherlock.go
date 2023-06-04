@@ -1,4 +1,4 @@
-package main
+package sherlock
 
 import (
 	"fmt"
@@ -9,41 +9,94 @@ import (
 	"time"
 )
 
-const (
-	Host = 1 << iota // 主机名
-	Pid              // 进程ID
-)
+//const (
+//	Host = 1 << iota // 主机名
+//	Pid              // 进程ID
+//)
 
 type Sherlock struct {
-	Logger
-	level  Level
-	prefix string
-	flag   int
+	level         Level
+	fileLoggers   map[Level]Logger
+	consoleLogger Logger
+}
+
+type FileWriterSetting struct {
+	LogDir        string
+	LogName       string
+	Level         Level
+	MinLevel      Level
+	MaxLevel      Level
+	MaxSize       uint64 // byte
+	MaxFile       uint64 // 最多保留的文件个数
+	BufferSize    int    // byte
+	FlushInterval int    // second
+	CutInterval   int64  // second
 }
 
 type Option func(sherlock *Sherlock)
 
-func WithFileWriter(writer *FileWriter) Option {
+func WithFileWriter(setting *FileWriterSetting) Option {
 	return func(sherlock *Sherlock) {
-		writer.level = sherlock.level
-		err := writer.Init()
-		if err == nil {
-			sherlock.SetOutput(writer)
+		if setting.MinLevel != 0 || setting.MaxLevel != 0 {
+			minLevel := MinLevel
+			maxLevel := MaxLevel
+
+			if setting.MinLevel != 0 {
+				minLevel = setting.MinLevel
+			}
+
+			if setting.MaxLevel != 0 {
+				maxLevel = setting.MaxLevel
+			}
+
+			if minLevel > maxLevel {
+				fmt.Println("MinLevel must be less than MaxLevel")
+			}
+
+			for i := minLevel; i <= maxLevel; i++ {
+				setting.Level = i
+				writer := NewFileWriter(setting)
+				err := writer.Init()
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+				logger := log.New(writer, "", 0)
+				sherlock.fileLoggers[setting.Level] = logger
+			}
+
+			return
 		}
+
+		if setting.Level == 0 {
+			// 如果都没有设置默认DEBUG
+			setting.Level = DEBUG
+		}
+
+		writer := NewFileWriter(setting)
+		err := writer.Init()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		logger := log.New(writer, "", 0)
+		sherlock.fileLoggers[setting.Level] = logger
 	}
 }
 
 func WithConsoleWriter(writer io.Writer) Option {
 	return func(sherlock *Sherlock) {
-		sherlock.SetOutput(writer)
+		logger := log.New(writer, "", 0)
+		sherlock.consoleLogger = logger
 	}
 }
 
-func NewSherlock(level Level, prefix string, flag int, opts ...Option) *Sherlock {
-	logger := log.New(io.Discard, prefix, 0)
+func NewSherlock(level Level, opts ...Option) *Sherlock {
+	//logger := log.New(io.Discard, "", 0)
 	s := &Sherlock{
-		Logger: logger,
-		level:  level,
+		level:       level,
+		fileLoggers: make(map[Level]Logger),
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -58,17 +111,10 @@ func (l *Sherlock) CheckLevel(level Level) bool {
 	return true
 }
 
-type LoggingSetting struct {
-	Dir          string
-	Level        int
-	Prefix       string
-	WriterOption Option
-}
-
-func (l *Sherlock) format(f string, args ...interface{}) string {
+func (l *Sherlock) format(level Level, f string, args ...interface{}) string {
 	logContent := fmt.Sprintf(f, args...)
 
-	_, file, line, ok := runtime.Caller(2)
+	_, file, line, ok := runtime.Caller(3)
 	if !ok {
 		file = "???"
 		line = 0
@@ -79,40 +125,41 @@ func (l *Sherlock) format(f string, args ...interface{}) string {
 
 	timeStr := time.Now().Format("2006-01-02 15:04:05")
 
-	return fmt.Sprintf("%s %s %s [%s] %s", host, l.level.String(), timeStr, caller, logContent)
+	return fmt.Sprintf("%s %s %s [%s] %s", host, level.String(), timeStr, caller, logContent)
+}
+
+func (l *Sherlock) output(level Level, f string, args ...interface{}) {
+	if l.CheckLevel(level) {
+		return
+	}
+
+	content := l.format(level, f, args...)
+
+	if l.consoleLogger != nil {
+		_ = l.consoleLogger.Output(0, content)
+	}
+
+	if fileLogger, ok := l.fileLoggers[level]; ok {
+		_ = fileLogger.Output(0, content)
+	}
 }
 
 func (l *Sherlock) DebugF(f string, args ...interface{}) {
-	if l.CheckLevel(DEBUG) {
-		return
-	}
-	_ = l.Output(0, l.format(f, args...))
+	l.output(DEBUG, f, args...)
 }
 
 func (l *Sherlock) InfoF(f string, args ...interface{}) {
-	if l.CheckLevel(INFO) {
-		return
-	}
-	_ = l.Output(0, l.format(f, args...))
+	l.output(INFO, f, args...)
 }
 
 func (l *Sherlock) WarnF(f string, args ...interface{}) {
-	if l.CheckLevel(WARN) {
-		return
-	}
-	_ = l.Output(0, l.format(f, args...))
+	l.output(WARN, f, args...)
 }
 
 func (l *Sherlock) ErrorF(f string, args ...interface{}) {
-	if l.CheckLevel(ERROR) {
-		return
-	}
-	_ = l.Output(0, l.format(f, args...))
+	l.output(ERROR, f, args...)
 }
 
 func (l *Sherlock) FatalF(f string, args ...interface{}) {
-	if l.CheckLevel(FATAL) {
-		return
-	}
-	_ = l.Output(0, l.format(f, args...))
+	l.output(FATAL, f, args...)
 }

@@ -1,26 +1,32 @@
-package main
+package sherlock
 
 import (
-	"log"
 	"os"
 	"testing"
 	"time"
 )
 
 func Test(t *testing.T) {
-	//sherlock := NewSherlock(DEBUG, "", log.Ldate|log.Ltime|log.Lmicroseconds|log.Llongfile, WithConsoleWriter(os.Stdout))
-	sherlock := NewSherlock(DEBUG, "", log.Llongfile, WithConsoleWriter(os.Stdout))
-	sherlock.DebugF("测试一下")
-}
 
-func TestFileWriter(t *testing.T) {
-	fileWriter := NewFileWriter("./logs", "test", 0, 0, 30, 0, 5)
-	sherlock := NewSherlock(DEBUG, "", log.Llongfile, WithConsoleWriter(os.Stdout), WithFileWriter(fileWriter))
+	sherlock := NewSherlock(
+		DEBUG,
+		WithConsoleWriter(os.Stdout),
+		WithFileWriter(&FileWriterSetting{
+			LogDir:      "./logs",
+			LogName:     "test",
+			Level:       DEBUG,
+			MinLevel:    DEBUG,
+			MaxLevel:    FATAL,
+			CutInterval: 10,
+		}),
+	)
+
 	ticker := time.NewTicker(time.Second * 1)
 	for {
 		select {
 		case <-ticker.C:
-			sherlock.DebugF("测试一下")
+			sherlock.DebugF("测试一下测试一下")
+			sherlock.InfoF("测试一下测试一下")
 		}
 	}
 }
