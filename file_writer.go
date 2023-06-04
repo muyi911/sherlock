@@ -207,13 +207,12 @@ func (fw *FileWriter) getCurrentLogName() string {
 }
 
 func (fw *FileWriter) getCutLogName(t time.Time) string {
-	return fmt.Sprintf("%s.%04d%02d%02d%02d%02d",
+	return fmt.Sprintf("%s.%04d%02d%02d%02d",
 		fw.getCurrentLogName(),
 		t.Year(),
 		t.Month(),
 		t.Day(),
-		t.Hour(),
-		t.Minute())
+		t.Hour())
 }
 
 func (fw *FileWriter) deleteOldFile() {
