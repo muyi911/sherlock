@@ -51,6 +51,7 @@ func WithFileWriter(setting *FileWriterSetting) Option {
 
 			if minLevel > maxLevel {
 				fmt.Println("MinLevel must be less than MaxLevel")
+				return
 			}
 
 			for i := minLevel; i <= maxLevel; i++ {
@@ -93,7 +94,6 @@ func WithConsoleWriter(writer io.Writer) Option {
 }
 
 func NewSherlock(level Level, opts ...Option) *Sherlock {
-	//logger := log.New(io.Discard, "", 0)
 	s := &Sherlock{
 		level:       level,
 		fileLoggers: make(map[Level]Logger),

@@ -54,3 +54,10 @@ sherlock := NewSherlock(
     }),
 )
 ```
+
+# 输出的文件名称
+- 默认会写入`{LogDir}/{LogName}`文件中，如：`./logs/test`
+- 为了省略配置，`LogName`支持日志级别的格式化`{Level}`
+- 配置`LogName`为：`test.{Level}`，则会根据日志级别写入不同的文件，如：`./logs/test.debug`、`./logs/test.info`、`./logs/test.warn`、`./logs/test.error`、`./logs/test.fatal`
+- 暂时只支持`{Level}`，后续会支持更多的格式化参数
+- `CutInterval`会影响切割后的文件名称，`0-59`会精确到秒，`60-3599`会精确到分钟，`3600-86399`会精确到小时，`86400-`会精确到天

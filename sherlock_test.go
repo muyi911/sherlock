@@ -13,11 +13,11 @@ func Test(t *testing.T) {
 		WithConsoleWriter(os.Stdout),
 		WithFileWriter(&FileWriterSetting{
 			LogDir:      "./logs",
-			LogName:     "test",
+			LogName:     "test.{level}",
 			Level:       DEBUG,
-			MinLevel:    DEBUG,
-			MaxLevel:    FATAL,
+			MaxLevel:    INFO,
 			CutInterval: 10,
+			MaxFile:     5,
 		}),
 	)
 

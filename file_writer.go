@@ -26,8 +26,6 @@ type FileWriter struct {
 	cutInterval   int64 // second
 }
 
-//logDir string, logName string, bufferSize, flushInterval int, cutInterval int64, maxSize uint64, maxFile uint64
-
 func NewFileWriter(setting *FileWriterSetting) *FileWriter {
 	fw := &FileWriter{
 		mu:            sync.Mutex{},
@@ -43,21 +41,19 @@ func NewFileWriter(setting *FileWriterSetting) *FileWriter {
 	if len(fw.logDir) == 0 {
 		fw.logDir = "./" // 默认当前目录
 	}
+
 	if len(fw.logName) == 0 {
 		fw.logName = program // 默认程序名
 	}
-	//if fw.maxSize == 0 {
-	//	fw.maxSize = 1024 * 1024 * 1800 // 默认1800MB
-	//}
+
 	if fw.flushInterval == 0 {
 		fw.flushInterval = 3 // 默认3秒
 	}
-	if fw.cutInterval == 0 {
-		fw.cutInterval = 86400 // 默认24小时 (24 * 60 * 60s)
-	}
+
 	if fw.bufferSize == 0 {
 		fw.bufferSize = 4096 // 默认4KB
 	}
+
 	if len(fw.logName) == 0 {
 		fw.logName = program
 	}
@@ -75,7 +71,10 @@ func (fw *FileWriter) Init() (err error) {
 	}
 
 	go fw.flushLoop()
-	go fw.cutFile()
+
+	if fw.cutInterval > 0 {
+		go fw.cutFile()
+	}
 	return
 }
 
@@ -98,9 +97,6 @@ func (fw *FileWriter) Write(p []byte) (n int, err error) {
 
 	n, err = fw.Writer.Write(p)
 	fw.bytesCounter += uint64(n)
-	if err != nil {
-		fw.exit(err)
-	}
 	return
 }
 
@@ -125,11 +121,19 @@ func (fw *FileWriter) rotateFile(cutTime int64, isInit bool) (err error) {
 		return
 	}
 
-	fw.bytesCounter = 0
+	if fw.file != nil {
+		err = fw.file.Close()
+		if err != nil {
+			return
+		}
+	}
+
 	fw.file, err = fw.createLogFile(cutTime, isInit)
 	if err != nil {
 		return
 	}
+
+	fw.bytesCounter = 0
 
 	fw.Writer = bufio.NewWriterSize(fw.file, fw.bufferSize)
 	return
@@ -184,21 +188,16 @@ func (fw *FileWriter) createCutFile(currentLogPath string, cutUnix int64) (f *os
 	cutLogName := fw.getCutLogName(time.Unix(cutUnix, 0))
 	cutLogPath := filepath.Join(fw.logDir, cutLogName)
 
-	if fw.file != nil {
-		err = fw.file.Close()
-		if err != nil {
-			return
-		}
-	}
-
 	err = os.Rename(currentLogPath, cutLogPath)
 	if err != nil {
 		return
 	}
+
 	f, err = os.Create(currentLogPath)
 	if err != nil {
 		return
 	}
+
 	return
 }
 
@@ -207,17 +206,25 @@ func (fw *FileWriter) getNextCutTime(unix int64) int64 {
 }
 
 func (fw *FileWriter) getCurrentLogName() string {
-	levelName := fw.level.String()
-	return fmt.Sprintf("%s.%s", fw.logName, strings.ToLower(levelName))
+	logName := fw.logName
+	logName = strings.Replace(logName, "{level}", strings.ToLower(fw.level.String()), 1)
+	return logName
 }
 
 func (fw *FileWriter) getCutLogName(t time.Time) string {
-	return fmt.Sprintf("%s.%04d%02d%02d%02d",
-		fw.getCurrentLogName(),
-		t.Year(),
-		t.Month(),
-		t.Day(),
-		t.Hour())
+	dateFormat := ""
+
+	if fw.cutInterval < 60 {
+		dateFormat = "20060102150405" // 秒
+	} else if fw.cutInterval < 3600 {
+		dateFormat = "200601021504" // 分钟
+	} else if fw.cutInterval < 86400 {
+		dateFormat = "2006010215" // 小时
+	} else {
+		dateFormat = "20060102" // 天
+	}
+
+	return fmt.Sprintf("%s.%s", fw.getCurrentLogName(), t.Format(dateFormat))
 }
 
 func (fw *FileWriter) deleteOldFile() {
@@ -233,7 +240,7 @@ func (fw *FileWriter) deleteOldFile() {
 		}
 
 		if find, _ := regexp.MatchString(fw.getCurrentLogName()+".*", file.Name()); find {
-			if f, err := file.Info(); err == nil && f.ModTime().Unix() < ts {
+			if f, err := file.Info(); err == nil && f.ModTime().Unix() <= ts {
 				_ = os.Remove(filepath.Join(fw.logDir, file.Name()))
 			}
 		}
