@@ -6,6 +6,7 @@ import (
 	"log"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -16,6 +17,7 @@ import (
 
 type Sherlock struct {
 	level         Level
+	pattern       string
 	fileLoggers   map[Level]Logger
 	consoleLogger Logger
 }
@@ -93,9 +95,15 @@ func WithConsoleWriter(writer io.Writer) Option {
 	}
 }
 
-func NewSherlock(level Level, opts ...Option) *Sherlock {
+func NewSherlock(level Level, pattern string, opts ...Option) *Sherlock {
+	// 默认输出格式
+	if pattern == "" {
+		pattern = "{host} {level} {time} [{caller}] {msg}"
+	}
+
 	s := &Sherlock{
 		level:       level,
+		pattern:     pattern,
 		fileLoggers: make(map[Level]Logger),
 	}
 	for _, opt := range opts {
@@ -125,7 +133,15 @@ func (l *Sherlock) format(level Level, f string, args ...interface{}) string {
 
 	timeStr := time.Now().Format("2006-01-02 15:04:05")
 
-	return fmt.Sprintf("%s %s %s [%s] %s", host, level.String(), timeStr, caller, logContent)
+	output := strings.ReplaceAll(l.pattern, "{msg}", logContent)
+	output = strings.ReplaceAll(output, "{host}", host)
+	output = strings.ReplaceAll(output, "{pid}", pidStr)
+	output = strings.ReplaceAll(output, "{level}", level.String())
+	output = strings.ReplaceAll(output, "{time}", timeStr)
+	output = strings.ReplaceAll(output, "{caller}", caller)
+
+	//return fmt.Sprintf("%s %s %s [%s] %s", host, level.String(), timeStr, caller, logContent)
+	return output
 }
 
 func (l *Sherlock) output(level Level, f string, args ...interface{}) {

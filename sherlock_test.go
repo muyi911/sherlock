@@ -10,6 +10,7 @@ func Test(t *testing.T) {
 
 	sherlock := NewSherlock(
 		DEBUG,
+		"{host} {level} {time} [{caller}] {msg}",
 		WithConsoleWriter(os.Stdout),
 		WithFileWriter(&FileWriterSetting{
 			LogDir:      "./logs",
